@@ -1,0 +1,12 @@
+'use client'
+
+import { FormEvent, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { AuthShell } from '@/app/sign-in/page'
+import { signUp } from '@/lib/auth-client'
+
+export default function CreateAccountPage() {
+  const router = useRouter(); const [role, setRole] = useState<'customer' | 'shop'>('customer'); const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
+  async function submit(event: FormEvent) { event.preventDefault(); setLoading(true); setError(''); const result = await signUp.email({ name, email, password, role }); if (result.error) { setError('Unable to create your account. Try a different email.'); setLoading(false); return } router.push(role === 'shop' ? '/shop' : '/customer'); router.refresh() }
+  return <AuthShell title="Create your account" subtitle="Choose your workspace and start finding or winning repair work."><form onSubmit={submit} className="space-y-4"><div className="grid grid-cols-2 gap-2 rounded-xl bg-[#f2f3ef] p-1"><button type="button" onClick={() => setRole('customer')} className={`rounded-lg py-2 text-sm font-bold ${role === 'customer' ? 'bg-white text-[#c75324] shadow-sm' : 'text-[#67716f]'}`}>Customer</button><button type="button" onClick={() => setRole('shop')} className={`rounded-lg py-2 text-sm font-bold ${role === 'shop' ? 'bg-white text-[#c75324] shadow-sm' : 'text-[#67716f]'}`}>Shop</button></div><label className="block text-sm font-semibold">Full name<input required value={name} onChange={(event) => setName(event.target.value)} className="auth-input" placeholder="Jordan Lee" /></label><label className="block text-sm font-semibold">Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" placeholder="you@example.com" /></label><label className="block text-sm font-semibold">Password<input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="auth-input" placeholder="At least 8 characters" /></label>{error && <p className="text-sm font-medium text-red-600">{error}</p>}<button disabled={loading} className="auth-primary">{loading ? 'Creating account…' : `Create ${role} account`}</button><p className="text-center text-sm text-[#67716f]">Already registered? <a className="font-bold text-[#c75324]" href="/sign-in">Sign in</a></p></form></AuthShell>
+}
