@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Wrench } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeCheck, ShieldCheck, Wrench } from 'lucide-react'
 import Link from 'next/link'
 import { signIn } from '@/lib/auth-client'
 
@@ -15,14 +15,27 @@ export default function SignInPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setLoading(true); setError('')
-    const result = await signIn.email({ email, password })
-    if (result.error) { setError((result.error as any)?.error || 'Unable to sign in. Check your email and password.'); setLoading(false); return }
-    const profile = await fetch('/api/profile').then((response) => response.json())
-    router.push(profile.role === 'shop' ? '/shop' : '/customer')
-    router.refresh()
+    try {
+      const result = await signIn.email({ email, password })
+      if (result.error) { setError((result.error as any)?.error || 'Unable to sign in. Check your email and password.'); return }
+      const role = result.data?.role
+      router.push(role === 'admin' ? '/admin' : role === 'shop' ? '/shop' : '/customer')
+      router.refresh()
+    } catch { setError('Unable to sign in right now. Please try again.') }
+    finally { setLoading(false) }
   }
 
-  return <AuthShell title="Welcome back" subtitle="Sign in to manage repairs, quotes, and appointments."><form onSubmit={submit} className="space-y-4"><label className="block text-sm font-semibold">Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" placeholder="you@example.com" /></label><label className="block text-sm font-semibold">Password<input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="auth-input" placeholder="••••••••" /></label>{error && <p className="text-sm font-medium text-red-600">{error}</p>}<button disabled={loading} className="auth-primary">{loading ? 'Signing in…' : 'Sign in'}</button><p className="text-center text-sm text-[#67716f]">New here? <a className="font-bold text-[#c75324]" href="/create-account">Create an account</a></p></form></AuthShell>
+  return <AuthShell title="Welcome back" subtitle="Sign in to manage repairs, quotes, and appointments."><form onSubmit={submit} className="auth-form"><label>Email address<input required autoComplete="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" placeholder="you@example.com" /></label><label>Password<input required autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="auth-input" placeholder="Enter your password" /></label>{error && <p role="alert" className="auth-error">{error}</p>}<button disabled={loading} className="auth-primary">{loading ? 'Signing in…' : <>Sign in <ArrowRight size={17} /></>}</button><p className="auth-switch">New to Auto Repair Finder? <Link href="/create-account">Create an account</Link></p></form></AuthShell>
 }
 
-export function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) { return <main className="auth-page"><div className="auth-card"><Link href="/" className="mb-8 flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[#e96832] text-white"><Wrench size={20} /></div><div><p className="font-bold">Auto Repair Finder</p><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8a928e]">Your repair, your choice</p></div></Link><h1 className="text-3xl font-bold tracking-tight">{title}</h1><p className="mt-2 mb-7 text-sm leading-6 text-[#67716f]">{subtitle}</p>{children}<p className="mt-5 text-center text-xs text-[#8a928e]"><Link href="/" className="font-bold text-[#c75324]">Explore the site first</Link></p></div></main> }
+export function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return <main className="auth-page">
+    <section className="auth-story">
+      <Link href="/" className="auth-brand"><span className="auth-brand-mark"><Wrench size={20} /></span><span><strong>Auto Repair Finder</strong><small>Better care for your car</small></span></Link>
+      <div className="auth-story-copy"><span className="auth-story-kicker"><span /> REPAIR, WITH A LITTLE MORE CLARITY</span><h2>Good car care.<br /><span>Clear choices.</span></h2><p>Compare trusted local shops and straightforward quotes. Your car, your call.</p></div>
+      <div className="auth-story-card"><div className="auth-story-card-head"><span className="auth-story-icon"><ShieldCheck size={18} /></span><span><strong>A more confident way to repair</strong><small>Everything you need, all in one place.</small></span></div><div className="auth-story-points"><span><BadgeCheck size={16} /> Explore trusted local shops</span><span><BadgeCheck size={16} /> Compare clear quotes</span><span><BadgeCheck size={16} /> Choose what works for you</span></div></div>
+      <p className="auth-story-footer">AUTO REPAIR FINDER <span>·</span> GOOD PEOPLE. GOOD WORK.</p>
+    </section>
+    <section className="auth-panel"><div className="auth-card"><Link href="/" className="auth-back"><ArrowLeft size={15} /> Back to home</Link><div className="auth-heading"><p className="auth-kicker">YOUR REPAIR JOURNEY STARTS HERE</p><h1>{title}</h1><p>{subtitle}</p></div>{children}<p className="auth-privacy"><ShieldCheck size={14} /> Your account details stay private and secure.</p></div></section>
+  </main>
+}

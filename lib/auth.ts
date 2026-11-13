@@ -22,20 +22,25 @@ function id() { return crypto.randomBytes(16).toString('hex') }
 function now() { return new Date().toISOString() }
 
 export function createUser(name: string, email: string, password: string, role: 'customer'|'shop') {
-  if (!name.trim() || !email.trim() || password.length < 8) throw new Error('Name, email, and an 8-character password are required.')
+  const displayName = name.trim()
+  if (!displayName || displayName.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 8 || password.length > 1024) {
+    throw new Error('Enter a valid name and email, and a password between 8 and 1,024 characters.')
+  }
   const normalized = email.trim().toLowerCase()
   if (db.prepare('SELECT id FROM users WHERE email = ?').get(normalized)) throw new Error('An account with that email already exists.')
   const userId = id()
   const timestamp = now()
-  db.prepare('INSERT INTO users (id,name,email,password_hash,created_at) VALUES (?,?,?,?,?)')
-    .run(userId, name.trim(), normalized, hashPassword(password), timestamp)
-  db.prepare('INSERT INTO user_profiles (user_id,role,created_at,updated_at) VALUES (?,?,?,?)')
-    .run(userId, role, timestamp, timestamp)
-  if (role === 'shop') {
-    db.prepare(`INSERT INTO shop_profiles (owner_user_id,name,email,services,is_verified,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?)`).run(userId, `${name.trim()}'s Auto Shop`, normalized, '[]', 0, timestamp, timestamp)
-  }
-  return { id: userId, name: name.trim(), email: normalized, role }
+  db.transaction(() => {
+    db.prepare('INSERT INTO users (id,name,email,password_hash,created_at) VALUES (?,?,?,?,?)')
+      .run(userId, displayName, normalized, hashPassword(password), timestamp)
+    db.prepare('INSERT INTO user_profiles (user_id,role,created_at,updated_at) VALUES (?,?,?,?)')
+      .run(userId, role, timestamp, timestamp)
+    if (role === 'shop') {
+      db.prepare(`INSERT INTO shop_profiles (owner_user_id,name,email,services,is_verified,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?)`).run(userId, `${displayName}'s Auto Shop`, normalized, '[]', 0, timestamp, timestamp)
+    }
+  })()
+  return { id: userId, name: displayName, email: normalized, role }
 }
 
 export function authenticate(email: string, password: string) {

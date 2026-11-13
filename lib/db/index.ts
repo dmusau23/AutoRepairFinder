@@ -88,6 +88,15 @@ CREATE TABLE IF NOT EXISTS quotes (
   updated_at TEXT NOT NULL,
   UNIQUE(repair_request_id, shop_id)
 );
+CREATE TABLE IF NOT EXISTS appointments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quote_id INTEGER NOT NULL UNIQUE REFERENCES quotes(id) ON DELETE CASCADE,
+  scheduled_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','cancelled')),
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS quote_notes (
   quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -114,11 +123,19 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_requests_user ON repair_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON repair_requests(status);
 CREATE INDEX IF NOT EXISTS idx_quotes_request ON quotes(repair_request_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_scheduled ON appointments(scheduled_at,status);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `)
 
-// Additive profile fields for existing local databases.
-for (const [table, column] of [['user_profiles', 'profile_image'], ['shop_profiles', 'profile_image'], ['user_profiles', 'welcome_seen_at']] as const) {
+// Additive fields for existing local databases.
+for (const [table, column] of [
+  ['user_profiles', 'profile_image'],
+  ['shop_profiles', 'profile_image'],
+  ['user_profiles', 'welcome_seen_at'],
+  ['appointments', 'customer_response'],
+  ['appointments', 'customer_message'],
+  ['appointments', 'customer_updated_at'],
+] as const) {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`) } catch { /* Column already exists. */ }
 }
 
@@ -128,15 +145,15 @@ if (count.count === 0) {
   const seed = db.prepare(`INSERT INTO shop_profiles
     (owner_user_id,name,description,address,city,state,postal_code,phone,email,rating,review_count,services,is_verified,created_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-  // A seeded marketplace can exist before shop accounts are created.
-  const seedUserId = 'seed-shop-owner'
-  const userExists = db.prepare('SELECT id FROM users WHERE id=?').get(seedUserId)
-  if (!userExists) {
-    db.prepare('INSERT INTO users (id,name,email,password_hash,created_at) VALUES (?,?,?,?,?)')
-      .run(seedUserId, 'Auto Repair Finder', 'seed-shop@autorepair.local', 'seed-account', now)
-    db.prepare('INSERT INTO user_profiles (user_id,role,created_at,updated_at) VALUES (?,?,?,?)')
-      .run(seedUserId, 'shop', now, now)
+  const seedUser = db.prepare('INSERT OR IGNORE INTO users (id,name,email,password_hash,created_at) VALUES (?,?,?,?,?)')
+  const seedProfile = db.prepare('INSERT OR IGNORE INTO user_profiles (user_id,role,created_at,updated_at) VALUES (?,?,?,?)')
+  const shops = [
+    { id:'seed-peachtree-owner', owner:'Peachtree Auto Care', email:'peachtree@autorepair.local', name:'Peachtree Auto Care', description:'Full-service neighborhood repair shop.', address:'123 Peachtree Pkwy', city:'Suwanee', state:'GA', zip:'30024', phone:'770-555-0147', contact:'hello@peachtreeautocare.example', rating:4.8, reviews:126, services:['Brakes','Oil change','Diagnostics','AC repair'] },
+    { id:'seed-southside-owner', owner:'Southside Garage', email:'southside@autorepair.local', name:'Southside Garage', description:'Diagnostics, maintenance, and major repairs.', address:'456 Main St', city:'Lawrenceville', state:'GA', zip:'30046', phone:'770-555-0192', contact:'service@southsidegarage.example', rating:4.6, reviews:89, services:['Diagnostics','Engine','Tires','Maintenance'] },
+  ]
+  for (const shop of shops) {
+    seedUser.run(shop.id, shop.owner, shop.email, 'seed-account', now)
+    seedProfile.run(shop.id, 'shop', now, now)
+    seed.run(shop.id, shop.name, shop.description, shop.address, shop.city, shop.state, shop.zip, shop.phone, shop.contact, shop.rating, shop.reviews, JSON.stringify(shop.services), 1, now, now)
   }
-  seed.run(seedUserId,'Peachtree Auto Care','Full-service neighborhood repair shop.','123 Peachtree Pkwy','Suwanee','GA','30024','770-555-0147','hello@peachtreeautocare.example',4.8,126,JSON.stringify(['Brakes','Oil change','Diagnostics','AC repair']),1,now,now)
-  seed.run(seedUserId,'Southside Garage','Diagnostics, maintenance, and major repairs.','456 Main St','Lawrenceville','GA','30046','770-555-0192','service@southsidegarage.example',4.6,89,JSON.stringify(['Diagnostics','Engine','Tires','Maintenance']),1,now,now)
 }

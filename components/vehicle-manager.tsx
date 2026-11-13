@@ -1,16 +1,17 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import { CarFront, Check, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ArrowRight, CarFront, Check, Gauge, Loader2, Pencil, Plus, ShieldCheck, Trash2, Wrench, X } from 'lucide-react'
 
 type Vehicle = { id: number; year: number; make: string; model: string; trim: string | null; mileage: number | null; vin: string | null }
 type Draft = { year: string; make: string; model: string; trim: string; mileage: string; vin: string }
 const emptyDraft: Draft = { year: '', make: '', model: '', trim: '', mileage: '', vin: '' }
 
-export default function VehicleManager() {
+export default function VehicleManager({ onVehiclesChange }: { onVehiclesChange: (vehicles: Vehicle[]) => void }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [removingId, setRemovingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -23,6 +24,7 @@ export default function VehicleManager() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Unable to load vehicles.')
       setVehicles(data.vehicles)
+      onVehiclesChange(data.vehicles)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load vehicles.') } finally { setLoading(false) }
   }
   useEffect(() => { void loadVehicles() }, [])
@@ -44,17 +46,43 @@ export default function VehicleManager() {
 
   async function remove(id: number) {
     if (!window.confirm('Remove this vehicle from your garage?')) return
-    setError('')
-    const response = await fetch('/api/vehicles', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
-    if (!response.ok) { const data = await response.json(); setError(data.error || 'Unable to remove vehicle.'); return }
-    setVehicles((current) => current.filter((vehicle) => vehicle.id !== id)); setNotice('Vehicle removed.')
+    setError(''); setRemovingId(id)
+    try {
+      const response = await fetch('/api/vehicles', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Unable to remove vehicle.')
+      const updated = vehicles.filter((vehicle) => vehicle.id !== id)
+      setVehicles(updated); onVehiclesChange(updated); setNotice('Vehicle removed.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to remove vehicle.') }
+    finally { setRemovingId(null) }
   }
 
-  return <div className="space-y-5">
-    <div className="grid gap-4 md:grid-cols-2">
-      {loading ? <div className="rounded-xl border border-[#e4e6e1] p-6 text-sm text-[#67716f]">Loading your vehicles…</div> : vehicles.map((vehicle) => <article key={vehicle.id} className="rounded-xl border border-[#e4e6e1] p-5"><div className="flex items-start justify-between"><div className="flex size-11 items-center justify-center rounded-xl bg-[#fff0e7] text-[#e96832]"><CarFront size={21} /></div><div className="flex gap-1"><button onClick={() => startEdit(vehicle)} className="rounded-lg p-2 text-[#67716f] hover:bg-[#f2f3ef]" aria-label={`Edit ${vehicle.year} ${vehicle.make} ${vehicle.model}`}><Pencil size={16} /></button><button onClick={() => void remove(vehicle.id)} className="rounded-lg p-2 text-[#67716f] hover:bg-[#fff0e7] hover:text-[#c75324]" aria-label={`Remove ${vehicle.year} ${vehicle.make} ${vehicle.model}`}><Trash2 size={16} /></button></div></div><h3 className="mt-4 font-bold">{vehicle.year} {vehicle.make} {vehicle.model}{vehicle.trim ? ` ${vehicle.trim}` : ''}</h3><p className="mt-1 text-sm text-[#67716f]">{vehicle.mileage == null ? 'Mileage not added' : `${vehicle.mileage.toLocaleString()} miles`} · {vehicle.vin ? `VIN ${vehicle.vin}` : 'VIN not added'}</p></article>)}
-      {!loading && vehicles.length === 0 && <div className="rounded-xl border border-dashed border-[#d9ddd7] p-6"><CarFront className="text-[#e96832]" /><h3 className="mt-4 font-bold">Your garage is empty</h3><p className="mt-1 text-sm text-[#67716f]">Add a vehicle to get faster, more accurate repair quotes.</p></div>}
+  return <div className="vehicle-manager">
+    <section className="garage-intro">
+      <div className="garage-intro-copy"><span className="garage-kicker"><CarFront size={14}/> YOUR VEHICLE GARAGE</span><h2>Every vehicle, ready for the road.</h2><p>Keep your car details close by so repair requests are quicker and shops can give you more accurate quotes.</p></div>
+      <div className="garage-art" aria-hidden="true"><span><CarFront size={33}/></span><i/><i/></div>
+    </section>
+    <div className="garage-summary">
+      <div><span className="garage-summary-icon"><CarFront size={17}/></span><span><strong>{loading?'—':vehicles.length}</strong><small>{vehicles.length===1?'Vehicle in your garage':'Vehicles in your garage'}</small></span></div>
+      <div><span className="garage-summary-icon garage-summary-service"><Wrench size={17}/></span><span><strong>{loading?'—':vehicles.filter(vehicle=>vehicle.mileage!==null).length}</strong><small>With mileage recorded</small></span></div>
+      <p><ShieldCheck size={15}/> Your vehicle information is only used to support your repair requests.</p>
     </div>
-    <form onSubmit={save} className="rounded-xl border border-[#e4e6e1] bg-[#fbfbf9] p-5"><div className="flex items-center justify-between"><div><h3 className="font-bold">{editingId ? 'Edit vehicle' : 'Add a vehicle'}</h3><p className="mt-1 text-xs text-[#8a928e]">Required fields are marked by validation when you save.</p></div>{editingId && <button type="button" onClick={reset} className="rounded-lg p-2 text-[#67716f]" aria-label="Cancel editing"><X size={18} /></button>}</div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{([['year','Year','e.g. 2019'],['make','Make','e.g. Honda'],['model','Model','e.g. Civic'],['trim','Trim','e.g. EX'],['mileage','Mileage','e.g. 62410'],['vin','VIN','optional'] ] as const).map(([field, label, placeholder]) => <label key={field} className="text-sm font-semibold">{label}<input required={field === 'year' || field === 'make' || field === 'model'} value={draft[field]} onChange={(event) => update(field, event.target.value)} placeholder={placeholder} inputMode={field === 'year' || field === 'mileage' ? 'numeric' : 'text'} className="mt-2 h-10 w-full rounded-lg border border-[#dfe3dd] bg-white px-3 text-sm font-normal outline-none focus:border-[#e96832]" /></label>)}</div>{error && <p role="alert" className="mt-3 text-sm font-medium text-[#b42318]">{error}</p>}{notice && <p role="status" className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#287356]"><Check size={16} />{notice}</p>}<button disabled={saving} className="mt-5 flex h-10 items-center gap-2 rounded-lg bg-[#e96832] px-4 text-sm font-bold text-white disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}{editingId ? 'Save changes' : 'Add vehicle'}</button></form>
+    {error && <p role="alert" className="garage-alert">{error}</p>}
+    {notice && <p role="status" className="garage-notice"><Check size={16}/>{notice}</p>}
+    <div className="garage-section-heading"><div><span className="garage-section-kicker">YOUR GARAGE</span><h3>Vehicles</h3><p>{loading?'Loading your garage…':vehicles.length?'Manage the vehicles you use for repair requests.':'Add your first vehicle to get started.'}</p></div><span className="garage-count">{vehicles.length}</span></div>
+    <div className="garage-vehicle-grid">
+      {loading&&Array.from({length:2},(_,index)=><div key={index} className="garage-vehicle-skeleton"/> )}
+      {!loading&&vehicles.map(vehicle=><article key={vehicle.id} className="garage-vehicle-card">
+        <div className="garage-vehicle-card-top"><span className="garage-vehicle-emblem"><CarFront size={22}/></span><span className="garage-vehicle-actions"><button onClick={()=>startEdit(vehicle)} className="garage-action-button" aria-label={`Edit ${vehicle.year} ${vehicle.make} ${vehicle.model}`}><Pencil size={15}/></button><button disabled={removingId===vehicle.id} onClick={()=>void remove(vehicle.id)} className="garage-action-button is-destructive" aria-label={`Remove ${vehicle.year} ${vehicle.make} ${vehicle.model}`}><Trash2 size={15}/></button></span></div>
+        <div className="garage-vehicle-name"><span>{vehicle.year}</span><h3>{vehicle.make} {vehicle.model}</h3>{vehicle.trim&&<p>{vehicle.trim}</p>}</div>
+        <div className="garage-vehicle-details"><span><Gauge size={14}/>{vehicle.mileage==null?'Mileage not added':`${vehicle.mileage.toLocaleString()} miles`}</span><span><ShieldCheck size={14}/>{vehicle.vin?'VIN added':'VIN not added'}</span></div>
+      </article>)}
+      {!loading&&!vehicles.length&&<div className="garage-empty"><span><CarFront size={24}/></span><h3>Start with your first vehicle.</h3><p>Adding your year, make, and model makes it easier for shops to understand the repair you need.</p><button type="button" onClick={()=>document.getElementById('vehicle-year')?.focus()}>Add vehicle details <ArrowRight size={14}/></button></div>}
+    </div>
+    <form onSubmit={save} className="garage-form">
+      <div className="garage-form-heading"><span className="garage-form-icon">{editingId?<Pencil size={18}/>:<Plus size={19}/>}</span><div><span className="garage-section-kicker">{editingId?'UPDATE YOUR GARAGE':'BUILD YOUR GARAGE'}</span><h3>{editingId?'Edit vehicle details':'Add a vehicle'}</h3><p>Year, make, and model are required. The rest is optional.</p></div>{editingId&&<button type="button" onClick={reset} className="garage-cancel-edit" aria-label="Cancel editing"><X size={17}/></button>}</div>
+      <div className="garage-form-fields">{([['year','Year','e.g. 2019'],['make','Make','e.g. Honda'],['model','Model','e.g. Civic'],['trim','Trim','e.g. EX'],['mileage','Mileage','e.g. 62410'],['vin','VIN','Optional'] ] as const).map(([field,label,placeholder])=><label key={field} className="garage-field">{label}{field!=='year'&&field!=='make'&&field!=='model'&&<span>Optional</span>}<input id={field==='year'?'vehicle-year':undefined} required={field==='year'||field==='make'||field==='model'} value={draft[field]} onChange={event=>update(field,event.target.value)} placeholder={placeholder} inputMode={field==='year'||field==='mileage'?'numeric':'text'} className="garage-input"/></label>)}</div>
+      <div className="garage-form-footer"><p>VIN and mileage can be added later.</p><button disabled={saving} className="garage-submit-button">{saving?<Loader2 className="animate-spin" size={16}/>:editingId?<Check size={16}/>:<Plus size={16} />}{saving?'Saving vehicle…':editingId?'Save changes':'Add to garage'}</button></div>
+    </form>
   </div>
 }
